@@ -25,7 +25,7 @@ from verl.trainer.config import PPOConfig
 from verl.trainer.ray_trainer import RayPPOTrainer, ResourcePoolManager, Role
 from verl.utils import get_processor, get_tokenizer
 from verl.workers.fsdp_workers import FSDPWorker
-from verl.workers.reward import CustomRewardManager
+from verl.workers.reward import CustomRewardManager, VQARewardManager
 
 
 def main():
@@ -70,12 +70,20 @@ def main_task(config: PPOConfig):
         Role.RefPolicy: global_pool_id,
     }
 
-    reward_fn = CustomRewardManager(
-        tokenizer=tokenizer, num_examine=1, compute_score=config.worker.reward.compute_score
-    )
-    val_reward_fn = CustomRewardManager(
-        tokenizer=tokenizer, num_examine=1, compute_score=config.worker.reward.compute_score
-    )
+    if config.data.task == "vqa":
+        reward_fn = VQARewardManager(
+            tokenizer=tokenizer, num_examine=1, compute_score=config.worker.reward.compute_score
+        )
+        val_reward_fn = VQARewardManager(
+            tokenizer=tokenizer, num_examine=1, compute_score=config.worker.reward.compute_score
+        )
+    else:
+        reward_fn = CustomRewardManager(
+            tokenizer=tokenizer, num_examine=1, compute_score=config.worker.reward.compute_score
+        )
+        val_reward_fn = CustomRewardManager(
+            tokenizer=tokenizer, num_examine=1, compute_score=config.worker.reward.compute_score
+        )
 
     resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 

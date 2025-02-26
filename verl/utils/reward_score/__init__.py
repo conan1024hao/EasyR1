@@ -14,6 +14,7 @@
 
 
 from .math import math_compute_score
+from .vqa import vqa_compute_score
 
 
-__all__ = ["math_compute_score"]
+__all__ = ["math_compute_score", "vqa_compute_score"]

@@ -15,6 +15,7 @@
 import math
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
+import random
 
 import torch
 from datasets import load_dataset
@@ -59,6 +60,13 @@ def process_image(image: ImageObject, max_pixels: int, min_pixels: int) -> Image
         image = image.convert("RGB")
 
     return image
+
+
+def translate(text: str, language_code: str) -> str:
+    API_URL = "http://localhost:1314/generate"
+    payload = {"text": text, "language_code": language_code}
+    response = requests.post(API_URL, json=payload)
+    return response.json()["response"]
 
 
 class RLHFDataset(Dataset):
@@ -155,4 +163,155 @@ class RLHFDataset(Dataset):
         row_dict["attention_mask"] = attention_mask
         row_dict["position_ids"] = position_ids
         row_dict["raw_prompt_ids"] = self.tokenizer.encode(raw_prompt, add_special_tokens=False)
+        return row_dict
+
+
+class RLHFVQADataset(Dataset):
+    """
+    For multipe-choice VQA datasets.
+    Example: https://huggingface.co/datasets/HuggingFaceM4/A-OKVQA
+    """
+
+    def __init__(
+        self,
+        data_path: str,
+        tokenizer: PreTrainedTokenizer,
+        processor: Optional[ProcessorMixin],
+        prompt_key="question",
+        options_key="choices",
+        max_prompt_length=1024,
+        truncation="error",
+        max_pixels=None,
+        min_pixels=None,
+    ):
+        self.tokenizer = tokenizer
+        self.processor = processor
+        self.prompt_key = prompt_key
+        self.options_key = options_key
+        self.max_prompt_length = max_prompt_length
+        self.truncation = truncation
+        self.max_pixels = max_pixels
+        self.min_pixels = min_pixels
+    
+        # HACK
+        self.target_languages = ["zh"]
+
+        if "@" in data_path:
+            data_path, data_split = data_path.split("@")
+        else:
+            data_split = "train"
+
+        self.dataset = load_dataset(data_path, split=data_split)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        """
+        Note that we also return the raw_input_ids so that it can be combined with other chat template
+        """
+        row_dict = self.dataset[index]
+    
+        question = row_dict[self.prompt_key]
+        if "<image>" not in question:
+            question = f"<image>{question}"
+        options = row_dict[self.options_key]
+        question += " " + " ".join([f"({chr(i + ord('A'))}) {option}" for i, option in enumerate(options)])
+
+        messages = [
+            {"role": "system", "content": r"Please reason step by step, and put your final answer within \boxed{} (A, B, C, or D)."},
+            {"role": "user", "content": question},
+        ]
+        prompt = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+
+        image_key = "image" if "image" in row_dict else "images"
+
+        raw_prompt = prompt.replace("<image>", "<|vision_start|><|image_pad|><|vision_end|>")
+        row_dict[image_key] = [
+            process_image(image, self.max_pixels, self.min_pixels) for image in row_dict[image_key]
+        ]
+        image_inputs = self.processor.image_processor(row_dict[image_key], return_tensors="pt")
+        image_grid_thw = image_inputs["image_grid_thw"]
+        row_dict.update(image_inputs)
+
+        if image_grid_thw is not None:
+            merge_length = self.processor.image_processor.merge_size**2
+            index = 0
+            while "<image>" in prompt:
+                prompt = prompt.replace(
+                    "<image>",
+                    "<|vision_start|>"
+                    + "<|placeholder|>" * (image_grid_thw[index].prod() // merge_length)
+                    + "<|vision_end|>",
+                    1,
+                )
+                index += 1
+
+            prompt = prompt.replace("<|placeholder|>", self.processor.image_token)
+
+        input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(
+            prompt=prompt,
+            tokenizer=self.tokenizer,
+            max_length=self.max_prompt_length,
+            pad_token_id=self.tokenizer.pad_token_id,
+            left_pad=True,
+            truncation=self.truncation,
+        )
+        position_ids = get_rope_index(
+            self.processor,
+            input_ids=input_ids,
+            image_grid_thw=image_grid_thw,
+            attention_mask=attention_mask,
+        )  # (3, seq_len)
+
+        row_dict["input_ids"] = input_ids
+        row_dict["attention_mask"] = attention_mask
+        row_dict["position_ids"] = position_ids
+        row_dict["raw_prompt_ids"] = self.tokenizer.encode(raw_prompt, add_special_tokens=False)
+    
+        # translate the English question to other languages
+        language = random.choice(self.target_languages)
+        question_translated = translate(question, language)
+        messages = [
+            {"role": "system", "content": r"Please reason step by step, and put your final answer within \boxed{} (A, B, C, or D)."},
+            {"role": "user", "content": question_translated},
+        ]
+        prompt_translated = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+        raw_prompt_translated = prompt_translated.replace("<image>", "<|vision_start|><|image_pad|><|vision_end|>")
+        if image_grid_thw is not None:
+            merge_length = self.processor.image_processor.merge_size**2
+            index = 0
+            while "<image>" in prompt_translated:
+                prompt_translated = prompt_translated.replace(
+                    "<image>",
+                    "<|vision_start|>"
+                    + "<|placeholder|>" * (image_grid_thw[index].prod() // merge_length)
+                    + "<|vision_end|>",
+                    1,
+                )
+                index += 1
+
+            prompt_translated = prompt_translated.replace("<|placeholder|>", self.processor.image_token)
+    
+        input_ids_translated, attention_mask_translated = verl_F.tokenize_and_postprocess_data(
+            prompt=prompt_translated,
+            tokenizer=self.tokenizer,
+            max_length=self.max_prompt_length,
+            pad_token_id=self.tokenizer.pad_token_id,
+            left_pad=True,
+            truncation=self.truncation,
+        )
+        position_ids_translated = get_rope_index(
+            self.processor,
+            input_ids=input_ids_translated,
+            image_grid_thw=image_grid_thw,
+            attention_mask=attention_mask_translated,
+        )
+        
+        row_dict["input_ids_translated"] = input_ids_translated
+        row_dict["attention_mask_translated"] = attention_mask_translated
+        row_dict["position_ids_translated"] = position_ids_translated
+        row_dict["raw_prompt_ids_translated"] = self.tokenizer.encode(raw_prompt_translated, add_special_tokens=False)
+        row_dict["language"] = language
+    
         return row_dict

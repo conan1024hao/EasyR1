@@ -38,7 +38,7 @@ from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool, Ra
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer import core_algos
 from verl.trainer.config import PPOConfig
-from verl.utils.rl_dataset import RLHFDataset, collate_fn
+from verl.utils.rl_dataset import RLHFDataset, RLHFVQADataset, collate_fn
 from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import Tracking
 from verl.workers.fsdp_workers import FSDPWorker
@@ -295,6 +295,13 @@ def compute_timing_metrics(batch, timing_raw):
     }
 
 
+def translate(text: str, language_code: str) -> str:
+    API_URL = "http://localhost:1314/generate"
+    payload = {"text": text, "language_code": language_code}
+    response = requests.post(API_URL, json=payload)
+    return response.json()["response"]
+
+
 @contextmanager
 def _timer(name: str, timing_raw: Dict[str, float]):
     with Timer(name=name, logger=None) as timer:
@@ -359,16 +366,29 @@ class RayPPOTrainer:
         self._create_dataloader()
 
     def _create_dataloader(self):
-        self.train_dataset = RLHFDataset(
-            data_path=self.config.data.train_files,
-            tokenizer=self.tokenizer,
-            processor=self.processor,
-            prompt_key=self.config.data.prompt_key,
-            max_prompt_length=self.config.data.max_prompt_length,
-            truncation="right",
-            min_pixels=self.config.data.min_pixels,
-            max_pixels=self.config.data.max_pixels,
-        )
+        if self.config.data.task == "vqa":
+            self.train_dataset = RLHFVQADataset(
+                data_path=self.config.data.train_files,
+                tokenizer=self.tokenizer,
+                processor=self.processor,
+                prompt_key=self.config.data.prompt_key,
+                options_key=self.config.data.options_key,
+                max_prompt_length=self.config.data.max_prompt_length,
+                truncation="right",
+                min_pixels=self.config.data.min_pixels,
+                max_pixels=self.config.data.max_pixels,
+            )
+        else:
+            self.train_dataset = RLHFDataset(
+                data_path=self.config.data.train_files,
+                tokenizer=self.tokenizer,
+                processor=self.processor,
+                prompt_key=self.config.data.prompt_key,
+                max_prompt_length=self.config.data.max_prompt_length,
+                truncation="right",
+                min_pixels=self.config.data.min_pixels,
+                max_pixels=self.config.data.max_pixels,
+            )
         # use sampler for better ckpt resume
         if self.config.data.shuffle:
             train_dataloader_generator = torch.Generator()
@@ -386,16 +406,29 @@ class RayPPOTrainer:
             sampler=sampler,
         )
 
-        self.val_dataset = RLHFDataset(
-            data_path=self.config.data.val_files,
-            tokenizer=self.tokenizer,
-            processor=self.processor,
-            prompt_key=self.config.data.prompt_key,
-            max_prompt_length=self.config.data.max_prompt_length,
-            truncation="right",
-            min_pixels=self.config.data.min_pixels,
-            max_pixels=self.config.data.max_pixels,
-        )
+        if self.config.data.task == "vqa":
+            self.val_dataset = RLHFVQADataset(
+                data_path=self.config.data.val_files,
+                tokenizer=self.tokenizer,
+                processor=self.processor,
+                prompt_key=self.config.data.prompt_key,
+                options_key=self.config.data.options_key,
+                max_prompt_length=self.config.data.max_prompt_length,
+                truncation="right",
+                min_pixels=self.config.data.min_pixels,
+                max_pixels=self.config.data.max_pixels,
+            )
+        else:
+            self.val_dataset = RLHFDataset(
+                data_path=self.config.data.val_files,
+                tokenizer=self.tokenizer,
+                processor=self.processor,
+                prompt_key=self.config.data.prompt_key,
+                max_prompt_length=self.config.data.max_prompt_length,
+                truncation="right",
+                min_pixels=self.config.data.min_pixels,
+                max_pixels=self.config.data.max_pixels,
+            )
         self.val_dataloader = DataLoader(
             dataset=self.val_dataset,
             batch_size=len(self.val_dataset),
@@ -703,17 +736,42 @@ class RayPPOTrainer:
                         batch_keys=["input_ids", "attention_mask", "position_ids"],
                         non_tensor_batch_keys=["pixel_values", "image_grid_thw", "raw_prompt_ids", "images"],
                     )
+                    if "input_ids_translated" in batch.non_tensor_batch.keys():
+                        gen_batch_translated = batch.pop(
+                            batch_keys=["input_ids_translated", "attention_mask_translated", "position_ids_translated"],
+                            non_tensor_batch_keys
+                            =["pixel_values", "image_grid_thw", "raw_prompt_ids", "images", "language"],
+                        )
+                        gen_batch_translated = gen_batch_translated.rename_keys(
+                            {"input_ids_translated": "input_ids", "attention_mask_translated": "attention_mask", "position_ids_translated": "position_ids"}
+                        )
                 else:
                     gen_batch = batch.pop(
                         batch_keys=["input_ids", "attention_mask", "position_ids"],
                         non_tensor_batch_keys=["raw_prompt_ids"],
                     )
+                    if "input_ids_translated" in batch.non_tensor_batch.keys():
+                        gen_batch_translated = batch.pop(
+                            batch_keys=["input_ids_translated", "attention_mask_translated", "position_ids_translated"],
+                            non_tensor_batch_keys=["raw_prompt_ids", "language"],
+                        )
+                        gen_batch_translated = gen_batch_translated.rename_keys(
+                            {"input_ids_translated": "input_ids", "attention_mask_translated": "attention_mask", "position_ids_translated": "position_ids"}
+                        )
 
                 with _timer("step", timing_raw):
                     # generate a batch
                     with _timer("gen", timing_raw):  # wg: worker group
                         gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                        if gen_batch_translated is not None:
+                            # translate English to target language
+                            gen_batch_output_translated = translate(gen_batch_output) # TODO: implement translate
+                            # generate the translated batch
+                            gen_batch_translated_output = self.actor_rollout_wg.generate_sequences(gen_batch_translated)
+                            # merge the two batches
+                            gen_batch_output = gen_batch_output_translated.union(gen_batch_translated_output)
 
+                    # Remax is not supported in the current version for VLMs
                     if self.config.algorithm.adv_estimator == "remax":
                         with _timer("gen_max", timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
@@ -734,7 +792,10 @@ class RayPPOTrainer:
                         [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object
                     )
                     # repeat to align with repeated responses in rollout
-                    batch = batch.repeat(repeat_times=self.config.worker.rollout.n, interleave=True)
+                    if gen_batch_translated is not None:
+                        batch = batch.repeat(repeat_times=self.config.worker.rollout.n*2, interleave=True)
+                    else:
+                        batch = batch.repeat(repeat_times=self.config.worker.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
 
                     # balance the number of valid tokens on each dp rank.

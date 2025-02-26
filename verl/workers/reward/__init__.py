@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from .config import RewardConfig
-from .custom import CustomRewardManager
+from .custom import CustomRewardManager, VQARewardManager
 
 
-__all__ = ["CustomRewardManager", "RewardConfig"]
+__all__ = ["CustomRewardManager", "VQARewardManager", "RewardConfig"]
