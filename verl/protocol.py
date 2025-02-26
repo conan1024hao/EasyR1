@@ -91,9 +91,10 @@ def union_tensor_dict(tensor_dict1: TensorDict, tensor_dict2: TensorDict) -> Ten
 
     for key, value in tensor_dict2.items():
         if key in tensor_dict1 and not torch.equal(tensor_dict1[key], value):
-            raise ValueError(f"Key already exists: {key}.")
-
-        tensor_dict1[key] = value
+            tensor_dict = TensorDict.cat([tensor_dict1, tensor_dict2], dim=0) # HACK
+            return tensor_dict
+        else:
+            tensor_dict1[key] = value
 
     return tensor_dict1
 
@@ -103,9 +104,10 @@ def union_numpy_dict(
 ) -> Dict[str, Union[List, NDArray]]:
     for key, value in tensor_dict2.items():
         if key in tensor_dict1 and isinstance(value, np.ndarray) and not np.all(tensor_dict1[key] == value):
-            raise ValueError(f"Key already exists: {key}.")
-
-        tensor_dict1[key] = tensor_dict2[key]
+            # if the key already exists, we just append the value
+            tensor_dict1[key].extend(value)
+        else:
+            tensor_dict1[key] = tensor_dict2[key]
 
     return tensor_dict1
 

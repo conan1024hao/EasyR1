@@ -278,7 +278,7 @@ class RLHFVQADataset(Dataset):
         question_translated = translate(question.replace("<image>", ""), language)
         question_translated = f"<image>{question_translated}"
         messages = [
-            {"role": "system", "content": r"Please reason step by step, and put your final answer within \boxed{} (A, B, C, or D)."},
+            {"role": "system", "content": r"Please reason step by step in the same language as the question, and put your final answer within \boxed{} (A, B, C, or D)."},
             {"role": "user", "content": question_translated},
         ]
         prompt_translated = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)

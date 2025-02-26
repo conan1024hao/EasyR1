@@ -43,7 +43,7 @@ worker:
     temperature: 1.0
     tensor_parallel_size: 2
     gpu_memory_utilization: 0.6
-    n: 5
+    n: 3
     enable_chunked_prefill: true
 
   ref:
@@ -55,11 +55,11 @@ worker:
     compute_score: vqa
 
 trainer:
-  total_episodes: 100
+  total_episodes: 10
   logger: ["console", "wandb"]
   project_name: easy_r1
   experiment_name: qwen2_5_3b_a-okvqa
-  n_gpus_per_node: 2
+  n_gpus_per_node: 8
   nnodes: 1
   save_freq: 5
   test_freq: 5

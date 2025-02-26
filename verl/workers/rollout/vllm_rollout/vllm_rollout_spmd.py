@@ -133,9 +133,10 @@ class vLLMRollout(BaseRollout):
         if batch_size != len(non_tensor_batch["raw_prompt_ids"]):
             raise RuntimeError("vllm sharding manager is not work properly.")
 
-        if "images" in non_tensor_batch:
+        image_key = "images" if "images" in non_tensor_batch else "image"
+        if image_key in non_tensor_batch:
             vllm_inputs = []
-            for raw_prompt_ids, images in zip(non_tensor_batch.pop("raw_prompt_ids"), non_tensor_batch.pop("images")):
+            for raw_prompt_ids, images in zip(non_tensor_batch.pop("raw_prompt_ids"), non_tensor_batch.pop(image_key)):
                 vllm_inputs.append({"prompt_token_ids": raw_prompt_ids, "multi_modal_data": {"image": images}})
         else:
             vllm_inputs = [

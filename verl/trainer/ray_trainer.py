@@ -723,6 +723,8 @@ class RayPPOTrainer:
                 timing_raw = {}
 
                 batch: DataProto = DataProto.from_single_dict(batch_dict)
+                batch_: DataProto = deepcopy(batch)
+                gen_batch_translated = None
 
                 # pop those keys for generation
                 if "pixel_values" in batch.non_tensor_batch.keys():
@@ -731,28 +733,28 @@ class RayPPOTrainer:
                         batch_keys=["input_ids", "attention_mask", "position_ids"],
                         non_tensor_batch_keys=["pixel_values", "image_grid_thw", "raw_prompt_ids", image_key],
                     )
-                    if "input_ids_translated" in batch.non_tensor_batch.keys():
-                        gen_batch_translated = batch.pop(
+                    if "input_ids_translated" in batch_.batch.keys():
+                        gen_batch_translated = batch_.pop(
                             batch_keys=["input_ids_translated", "attention_mask_translated", "position_ids_translated"],
                             non_tensor_batch_keys
-                            =["pixel_values", "image_grid_thw", "raw_prompt_ids", image_key, "language"],
+                            =["pixel_values", "image_grid_thw", "raw_prompt_ids", image_key],
                         )
-                        gen_batch_translated = gen_batch_translated.rename_keys(
-                            {"input_ids_translated": "input_ids", "attention_mask_translated": "attention_mask", "position_ids_translated": "position_ids"}
-                        )
+                        gen_batch_translated = gen_batch_translated.rename(["input_ids_translated"], ["input_ids"])
+                        gen_batch_translated = gen_batch_translated.rename(["attention_mask_translated"], ["attention_mask"])
+                        gen_batch_translated = gen_batch_translated.rename(["position_ids_translated"], ["position_ids"])
                 else:
                     gen_batch = batch.pop(
                         batch_keys=["input_ids", "attention_mask", "position_ids"],
                         non_tensor_batch_keys=["raw_prompt_ids"],
                     )
-                    if "input_ids_translated" in batch.non_tensor_batch.keys():
-                        gen_batch_translated = batch.pop(
+                    if "input_ids_translated" in batch_.batch.keys():
+                        gen_batch_translated = batch_.pop(
                             batch_keys=["input_ids_translated", "attention_mask_translated", "position_ids_translated"],
-                            non_tensor_batch_keys=["raw_prompt_ids", "language"],
+                            non_tensor_batch_keys=["raw_prompt_ids"],
                         )
-                        gen_batch_translated = gen_batch_translated.rename_keys(
-                            {"input_ids_translated": "input_ids", "attention_mask_translated": "attention_mask", "position_ids_translated": "position_ids"}
-                        )
+                        gen_batch_translated = gen_batch_translated.rename(["input_ids_translated"], ["input_ids"])
+                        gen_batch_translated = gen_batch_translated.rename(["attention_mask_translated"], ["attention_mask"])
+                        gen_batch_translated = gen_batch_translated.rename(["position_ids_translated"], ["position_ids"])
 
                 with _timer("step", timing_raw):
                     # generate a batch
