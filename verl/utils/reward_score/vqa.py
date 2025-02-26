@@ -2,6 +2,8 @@ from mathruler.grader import extract_boxed_content
 
 
 def vqa_compute_score(predict_str: str, ground_truth: str) -> float:
+    print(predict_str)
+    print("------------------------------")
     answer = extract_boxed_content(predict_str)
     if answer == "None":
         return 0.0  # no answer

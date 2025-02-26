@@ -196,6 +196,9 @@ class RLHFVQADataset(Dataset):
 
         # HACK
         self.target_languages = ["zh"]
+        self.system_prompts = {
+            "zh": r"请逐步推理，并将你的最终答案放入\boxed{}（A、B、C或D）。"
+        }
 
         if "@" in data_path:
             data_path, data_split = data_path.split("@")
@@ -277,11 +280,11 @@ class RLHFVQADataset(Dataset):
         language = random.choice(self.target_languages)
         question_translated = translate(question.replace("<image>", ""), language)
         question_translated = f"<image>{question_translated}"
-        messages = [
-            {"role": "system", "content": r"Please reason step by step in the same language as the question, and put your final answer within \boxed{} (A, B, C, or D)."},
+        messages_translated = [
+            {"role": "system", "content": self.system_prompts[language]},
             {"role": "user", "content": question_translated},
         ]
-        prompt_translated = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+        prompt_translated = self.tokenizer.apply_chat_template(messages_translated, add_generation_prompt=True, tokenize=False)
         raw_prompt_translated = prompt_translated.replace("<image>", "<|vision_start|><|image_pad|><|vision_end|>")
         if image_grid_thw is not None:
             merge_length = self.processor.image_processor.merge_size**2
