@@ -13,10 +13,11 @@
 # limitations under the License.
 
 import math
+import random
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
-import random
 
+import requests
 import torch
 from datasets import load_dataset
 from PIL import Image
@@ -192,7 +193,7 @@ class RLHFVQADataset(Dataset):
         self.truncation = truncation
         self.max_pixels = max_pixels
         self.min_pixels = min_pixels
-    
+
         # HACK
         self.target_languages = ["zh"]
 
@@ -211,10 +212,11 @@ class RLHFVQADataset(Dataset):
         Note that we also return the raw_input_ids so that it can be combined with other chat template
         """
         row_dict = self.dataset[index]
-    
+
         question = row_dict[self.prompt_key]
         if "<image>" not in question:
             question = f"<image>{question}"
+        self.options_key = "choices" if "choices" in row_dict else "options"
         options = row_dict[self.options_key]
         question += " " + " ".join([f"({chr(i + ord('A'))}) {option}" for i, option in enumerate(options)])
 
@@ -227,6 +229,8 @@ class RLHFVQADataset(Dataset):
         image_key = "image" if "image" in row_dict else "images"
 
         raw_prompt = prompt.replace("<image>", "<|vision_start|><|image_pad|><|vision_end|>")
+        if not isinstance(row_dict[image_key], list):
+            row_dict[image_key] = [row_dict[image_key]]
         row_dict[image_key] = [
             process_image(image, self.max_pixels, self.min_pixels) for image in row_dict[image_key]
         ]
@@ -268,10 +272,11 @@ class RLHFVQADataset(Dataset):
         row_dict["attention_mask"] = attention_mask
         row_dict["position_ids"] = position_ids
         row_dict["raw_prompt_ids"] = self.tokenizer.encode(raw_prompt, add_special_tokens=False)
-    
+
         # translate the English question to other languages
         language = random.choice(self.target_languages)
-        question_translated = translate(question, language)
+        question_translated = translate(question.replace("<image>", ""), language)
+        question_translated = f"<image>{question_translated}"
         messages = [
             {"role": "system", "content": r"Please reason step by step, and put your final answer within \boxed{} (A, B, C, or D)."},
             {"role": "user", "content": question_translated},
@@ -292,7 +297,7 @@ class RLHFVQADataset(Dataset):
                 index += 1
 
             prompt_translated = prompt_translated.replace("<|placeholder|>", self.processor.image_token)
-    
+
         input_ids_translated, attention_mask_translated = verl_F.tokenize_and_postprocess_data(
             prompt=prompt_translated,
             tokenizer=self.tokenizer,
@@ -307,11 +312,11 @@ class RLHFVQADataset(Dataset):
             image_grid_thw=image_grid_thw,
             attention_mask=attention_mask_translated,
         )
-        
+
         row_dict["input_ids_translated"] = input_ids_translated
         row_dict["attention_mask_translated"] = attention_mask_translated
         row_dict["position_ids_translated"] = position_ids_translated
         row_dict["raw_prompt_ids_translated"] = self.tokenizer.encode(raw_prompt_translated, add_special_tokens=False)
         row_dict["language"] = language
-    
+
         return row_dict

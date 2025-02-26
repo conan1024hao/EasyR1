@@ -49,6 +49,9 @@ We provide a [Dockerfile](./Dockerfile) to easily build environments.
 ```bash
 git clone https://github.com/hiyouga/EasyR1.git
 cd EasyR1
+pip install torch torchvision torchaudio
+pip install psutil
+pip install flash_attn --no-build-isolation
 pip install -e .
 pip install git+https://github.com/hiyouga/MathRuler.git
 ```

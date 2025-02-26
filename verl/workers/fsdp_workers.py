@@ -186,7 +186,6 @@ class FSDPWorker(Worker):
                     torch_dtype=torch_dtype,
                     trust_remote_code=model_config.trust_remote_code,
                 )
-
         assert isinstance(model, PreTrainedModel)  # lint
         model.tie_weights()  # avoid hanging
         model = model.to(torch_dtype)

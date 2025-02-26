@@ -45,6 +45,8 @@ class DataConfig:
     seed: int = 1
     max_pixels: int = 4194304
     min_pixels: int = 262144
+    task: str = ""
+    options_key: str = "options"
 
 
 @dataclass

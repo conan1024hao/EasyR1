@@ -295,13 +295,6 @@ def compute_timing_metrics(batch, timing_raw):
     }
 
 
-def translate(text: str, language_code: str) -> str:
-    API_URL = "http://localhost:1314/generate"
-    payload = {"text": text, "language_code": language_code}
-    response = requests.post(API_URL, json=payload)
-    return response.json()["response"]
-
-
 @contextmanager
 def _timer(name: str, timing_raw: Dict[str, float]):
     with Timer(name=name, logger=None) as timer:
@@ -521,9 +514,10 @@ class RayPPOTrainer:
             sample_inputs.extend(input_texts)
 
             if "pixel_values" in test_batch.non_tensor_batch.keys():
+                image_key = "images" if "images" in test_batch.non_tensor_batch.keys() else "image"
                 test_gen_batch = test_batch.pop(
                     batch_keys=["input_ids", "attention_mask", "position_ids"],
-                    non_tensor_batch_keys=["pixel_values", "image_grid_thw", "raw_prompt_ids", "images"],
+                    non_tensor_batch_keys=["pixel_values", "image_grid_thw", "raw_prompt_ids", image_key],
                 )
             else:
                 test_gen_batch = test_batch.pop(
@@ -732,15 +726,16 @@ class RayPPOTrainer:
 
                 # pop those keys for generation
                 if "pixel_values" in batch.non_tensor_batch.keys():
+                    image_key = "images" if "images" in batch.non_tensor_batch.keys() else "image"
                     gen_batch = batch.pop(
                         batch_keys=["input_ids", "attention_mask", "position_ids"],
-                        non_tensor_batch_keys=["pixel_values", "image_grid_thw", "raw_prompt_ids", "images"],
+                        non_tensor_batch_keys=["pixel_values", "image_grid_thw", "raw_prompt_ids", image_key],
                     )
                     if "input_ids_translated" in batch.non_tensor_batch.keys():
                         gen_batch_translated = batch.pop(
                             batch_keys=["input_ids_translated", "attention_mask_translated", "position_ids_translated"],
                             non_tensor_batch_keys
-                            =["pixel_values", "image_grid_thw", "raw_prompt_ids", "images", "language"],
+                            =["pixel_values", "image_grid_thw", "raw_prompt_ids", image_key, "language"],
                         )
                         gen_batch_translated = gen_batch_translated.rename_keys(
                             {"input_ids_translated": "input_ids", "attention_mask_translated": "attention_mask", "position_ids_translated": "position_ids"}
@@ -764,12 +759,10 @@ class RayPPOTrainer:
                     with _timer("gen", timing_raw):  # wg: worker group
                         gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
                         if gen_batch_translated is not None:
-                            # translate English to target language
-                            gen_batch_output_translated = translate(gen_batch_output) # TODO: implement translate
                             # generate the translated batch
                             gen_batch_translated_output = self.actor_rollout_wg.generate_sequences(gen_batch_translated)
                             # merge the two batches
-                            gen_batch_output = gen_batch_output_translated.union(gen_batch_translated_output)
+                            gen_batch_output = gen_batch_output.union(gen_batch_translated_output)
 
                     # Remax is not supported in the current version for VLMs
                     if self.config.algorithm.adv_estimator == "remax":

@@ -55,7 +55,7 @@ worker:
     compute_score: vqa
 
 trainer:
-  total_episodes: 5
+  total_episodes: 100
   logger: ["console", "wandb"]
   project_name: easy_r1
   experiment_name: qwen2_5_3b_a-okvqa
