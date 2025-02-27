@@ -97,6 +97,10 @@ class VQARewardManager:
             ground_truth = data_item.non_tensor_batch[answer_key]
             if type(ground_truth) == int:
                 ground_truth = chr(ground_truth + ord("A"))
+            if ground_truth not in ["A", "B", "C", "D"]:
+                options_key = "choices" if "choices" in data_item.non_tensor_batch else "options"
+                options = data_item.non_tensor_batch[options_key]
+                ground_truth = ["A", "B", "C", "D"][options.index(ground_truth)]
 
             score = self.compute_score(response_str, ground_truth)
             reward_tensor[i, valid_response_length - 1] = score

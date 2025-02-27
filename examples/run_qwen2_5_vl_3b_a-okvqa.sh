@@ -13,7 +13,7 @@ python3 -m verl.trainer.main \
     data.train_files=Amasia-MLLM/A-OKVQA@train \
     data.val_files=Amasia-MLLM/KnowRecall@zh \
     worker.actor.model.model_path=${MODEL_PATH} \
-    worker.rollout.tensor_parallel_size=4 \
+    worker.rollout.tensor_parallel_size=1 \
     worker.rollout.enable_chunked_prefill=false \
     trainer.experiment_name=qwen2_5_vl_3b_a-okvqa \
     trainer.n_gpus_per_node=8
