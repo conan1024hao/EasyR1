@@ -197,7 +197,7 @@ class RLHFVQADataset(Dataset):
         # HACK
         self.target_languages = ["zh"]
         self.system_prompts = {
-            "zh": r"请逐步推理，并将你的最终答案放入\boxed{}（A、B、C或D）。"
+            "zh": r"请逐步分析并解释你的思考过程，最后将最终答案（A、B、C或D）标注在\boxed{}中。"
         }
 
         if "@" in data_path:

@@ -89,14 +89,18 @@ def union_tensor_dict(tensor_dict1: TensorDict, tensor_dict2: TensorDict) -> Ten
             f"Two tensor dict must have identical batch size. Got {tensor_dict1.batch_size} and {tensor_dict2.batch_size}"
         )
 
-    for key, value in tensor_dict2.items():
-        if key in tensor_dict1:
-            tensor_dict = TensorDict.cat([tensor_dict1, tensor_dict2], dim=0) # HACK
-            return tensor_dict
-        else:
-            tensor_dict1[key] = value
-
-    return tensor_dict1
+    # Check if there are any overlapping keys
+    common_keys = set(tensor_dict1.keys()).intersection(set(tensor_dict2.keys()))
+    
+    if common_keys:
+        # If there are overlapping keys, concatenate the entire dictionaries
+        return TensorDict.cat([tensor_dict1, tensor_dict2], dim=0)
+    else:
+        # If no overlapping keys, just add all the keys from tensor_dict2 to tensor_dict1
+        result_dict = tensor_dict1.clone()
+        for key, value in tensor_dict2.items():
+            result_dict[key] = value
+        return result_dict
 
 
 def union_numpy_dict(
@@ -403,6 +407,34 @@ class DataProto:
 
         self.batch.rename_key_(tuple(old_keys), tuple(new_keys))
 
+        return self
+
+    def rename_non_tensor_batch(self, old_keys=None, new_keys=None) -> "DataProto":
+        """
+        Note that this function only rename the key in the non_tensor_batch
+        """
+
+        def validate_input(keys):
+            if keys is not None:
+                if isinstance(keys, str):
+                    keys = [keys]
+                elif isinstance(keys, list):
+                    pass
+                else:
+                    raise TypeError(f"keys must be a list or a string, but got {type(keys)}")
+            return keys
+
+        old_keys = validate_input(old_keys)
+        new_keys = validate_input(new_keys)
+
+        if len(new_keys) != len(old_keys):
+            raise ValueError(
+                f"new_keys and old_keys must have the same length, but got {len(new_keys)} and {len(old_keys)}"
+            )
+
+        for old_key, new_key in zip(old_keys, new_keys):
+            self.non_tensor_batch[new_key] = self.non_tensor_batch.pop(old_key)
+    
         return self
 
     def union(self, other: "DataProto") -> "DataProto":

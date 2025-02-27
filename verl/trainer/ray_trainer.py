@@ -737,11 +737,12 @@ class RayPPOTrainer:
                         gen_batch_translated = batch_.pop(
                             batch_keys=["input_ids_translated", "attention_mask_translated", "position_ids_translated"],
                             non_tensor_batch_keys
-                            =["pixel_values", "image_grid_thw", "raw_prompt_ids", image_key],
+                            =["pixel_values", "image_grid_thw", "raw_prompt_ids_translated", image_key],
                         )
                         gen_batch_translated = gen_batch_translated.rename(["input_ids_translated"], ["input_ids"])
                         gen_batch_translated = gen_batch_translated.rename(["attention_mask_translated"], ["attention_mask"])
                         gen_batch_translated = gen_batch_translated.rename(["position_ids_translated"], ["position_ids"])
+                        gen_batch_translated = gen_batch_translated.rename_non_tensor_batch(["raw_prompt_ids_translated"], ["raw_prompt_ids"])
                 else:
                     gen_batch = batch.pop(
                         batch_keys=["input_ids", "attention_mask", "position_ids"],
@@ -750,11 +751,12 @@ class RayPPOTrainer:
                     if "input_ids_translated" in batch_.batch.keys():
                         gen_batch_translated = batch_.pop(
                             batch_keys=["input_ids_translated", "attention_mask_translated", "position_ids_translated"],
-                            non_tensor_batch_keys=["raw_prompt_ids"],
+                            non_tensor_batch_keys=["raw_prompt_ids_translated"],
                         )
                         gen_batch_translated = gen_batch_translated.rename(["input_ids_translated"], ["input_ids"])
                         gen_batch_translated = gen_batch_translated.rename(["attention_mask_translated"], ["attention_mask"])
                         gen_batch_translated = gen_batch_translated.rename(["position_ids_translated"], ["position_ids"])
+                        gen_batch_translated = gen_batch_translated.rename_non_tensor_batch(["raw_prompt_ids_translated"], ["raw_prompt_ids"])
 
                 with _timer("step", timing_raw):
                     # generate a batch
