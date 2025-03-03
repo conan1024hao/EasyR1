@@ -410,6 +410,7 @@ class RayPPOTrainer:
                 truncation="right",
                 min_pixels=self.config.data.min_pixels,
                 max_pixels=self.config.data.max_pixels,
+                is_validation=True,
             )
         else:
             self.val_dataset = RLHFDataset(

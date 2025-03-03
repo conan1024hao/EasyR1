@@ -184,6 +184,7 @@ class RLHFVQADataset(Dataset):
         truncation="error",
         max_pixels=None,
         min_pixels=None,
+        is_validation=False,
     ):
         self.tokenizer = tokenizer
         self.processor = processor
@@ -193,11 +194,13 @@ class RLHFVQADataset(Dataset):
         self.truncation = truncation
         self.max_pixels = max_pixels
         self.min_pixels = min_pixels
+        self.is_validation = is_validation
 
         # HACK
-        self.target_languages = ["zh"]
+        self.target_languages = ["zh", "he"]
         self.system_prompts = {
-            "zh": r"请逐步分析并解释你的思考过程，最后将最终答案（A、B、C或D）标注在\boxed{}中。"
+            "zh": r"请逐步分析并解释你的思考过程，最后将最终答案（A、B、C或D）标注在\boxed{}中。",
+            "he": r"אנא פרט את השיקולים שלך והסבר את הפתרון שלך בצעדים, והכנס את התשובה הסופית שלך בתוך \boxed{} (A, B, C או D).",
         }
 
         if "@" in data_path:
@@ -275,6 +278,9 @@ class RLHFVQADataset(Dataset):
         row_dict["attention_mask"] = attention_mask
         row_dict["position_ids"] = position_ids
         row_dict["raw_prompt_ids"] = self.tokenizer.encode(raw_prompt, add_special_tokens=False)
+
+        if self.is_validation:
+            return row_dict
 
         # translate the English question to other languages
         language = random.choice(self.target_languages)

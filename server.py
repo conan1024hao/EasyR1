@@ -1,20 +1,15 @@
-import torch
 from fastapi import FastAPI
 from pydantic import BaseModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from vllm import LLM, SamplingParams
 
-
-# Initialize FastAPI app
+# Initialize FastAPI app and LLM
 app = FastAPI()
+llm = LLM("ModelSpace/GemmaX2-28-2B-v0.1", tensor_parallel_size=8, gpu_memory_utilization=0.1)
 
-# Load the model and tokenizer
-MODEL_NAME = "ModelSpace/GemmaX2-28-2B-v0.1"
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=torch.bfloat16, device_map="auto")
-model.eval()
-
-language_id2name = {
+# Constants
+LANGUAGE_MAP = {
     "zh": "Chinese",
+    "he": "Hebrew",
 }
 
 class RequestData(BaseModel):
@@ -24,11 +19,17 @@ class RequestData(BaseModel):
 
 @app.post("/generate")
 async def generate_text(request_data: RequestData):
-    prompt = (f"Translate this from English to {language_id2name[request_data.language_code]}:\n"
-              f"English: {request_data.text}\n{language_id2name[request_data.language_code]}:")
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
-    output_ids = model.generate(**inputs, max_new_tokens=request_data.max_length)
-    output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True).split(f"\n{language_id2name[request_data.language_code]}:")[1].strip()
+    # Create sampling params from the request
+    params = SamplingParams(max_tokens=request_data.max_length)
+    
+    # Build translation prompt
+    target_language = LANGUAGE_MAP.get(request_data.language_code, "Chinese")
+    prompt = f"Translate this from English to {target_language}:\nEnglish: {request_data.text}\n{target_language}:"
+    
+    # Generate and extract text
+    outputs = llm.generate(prompt, sampling_params=params)
+    output_text = outputs[0].outputs[0].text
+    print(output_text)
     return {"response": output_text}
 
 if __name__ == "__main__":
